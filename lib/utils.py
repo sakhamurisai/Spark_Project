@@ -477,3 +477,45 @@ def payment_category_clean(payment_cat):
     payment_cat = re.sub(r'[^A-Z]', '', payment_cat)  # Keep only alphabets
     return payment_categories.get(payment_cat, "Unknown")
 
+
+card_type_mapping = {
+    # American Express variants
+    'AMEX': 'American Express',
+    'Amex': 'American Express',
+    'amex': 'American Express',
+    'AE': 'American Express',
+    'American Express': 'American Express',
+
+    # Visa variants
+    'VISA': 'Visa',
+    'Visa': 'Visa',
+    'visa': 'Visa',
+    'V': 'Visa',
+
+    # Mastercard variants
+    'MC': 'Mastercard',
+    'Mastercard': 'Mastercard',
+    'MASTERCARD': 'Mastercard',
+    'mastercard': 'Mastercard',
+    'Master Card': 'Mastercard',
+    'MasterCard': 'Mastercard',
+    'MASTER': 'Mastercard',
+    'Master': 'Mastercard',
+
+    # Discover variants
+    'DISC': 'Discover',
+    'Discover': 'Discover',
+    'DISCOVER': 'Discover',
+    'discover': 'Discover',
+    'DIS': 'Discover',
+    'D': 'Discover',
+
+    # Handle NULL/missing values
+    'NULL': 'Unknown',
+    '': 'Unknown',
+    ' ': 'Unknown',
+    'null': 'Unknown',
+    'N/A': 'Unknown',
+    'NA': 'Unknown',
+    None: 'Unknown'
+}

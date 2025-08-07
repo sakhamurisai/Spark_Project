@@ -130,6 +130,8 @@ if __name__ == "__main__":
 #cleaning the payment_method
     payment_cat_udf = udf(payment_category_clean,StringType())
     payment_method_df = merchant_category_df.withColumn("payment_method",payment_cat_udf(col("payment_method")))
-    payment_method_df.show(10)
+#cleaning the card_last_four column
+    card_last_four_df = payment_method_df.withColumn("card_last_four",universal_id_checker_udf(col("card_last_four")))
 
+    payment_method_df.groupBy("card_type").count().orderBy(desc("count")).show(20)
     spark.stop()
