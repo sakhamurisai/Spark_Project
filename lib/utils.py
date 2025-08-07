@@ -60,6 +60,12 @@ def name_checker(name):
     else:
         return "NULL"
 
+
+import pandas as pd
+from datetime import datetime, date
+import re
+
+
 def format_date(date_string):
     date_string = str(date_string).strip()
     valid_date_patterns_list = [
@@ -143,7 +149,7 @@ def format_date(date_string):
         }
     ]
 
-    if date_string is None:
+    if date_string is None or pd.isna(date_string):
         return None
     for item in valid_date_patterns_list:
         pattern = item["expression"]["pattern"]
@@ -151,9 +157,34 @@ def format_date(date_string):
         if re.match(pattern, date_string):
             try:
                 dt = datetime.strptime(date_string, fmt)
-                return dt.strftime("%m-%d-%Y")
+                return dt.strftime("%Y-%m-%d")
             except Exception:
                 continue
+    return None
+
+
+def clean_age(age,dob):
+    if age is None:
+        return None
+    try:
+        age_int = int(age)
+        if 0 <= age_int <= 120:
+            return age_int
+    except (ValueError, TypeError):
+        pass
+    if dob:
+        cleaned_dob = format_date(dob)
+        if cleaned_dob:
+            try:
+                dob_date = datetime.strptime(cleaned_dob, "%Y-%m-%d").date()
+                today = date.today()
+
+                age_from_dob = today.year - dob_date.year - ((today.month, today.day) < (dob_date.month, dob_date.day))
+
+                if 0 <= age_from_dob <= 120:
+                    return age_from_dob
+            except (ValueError, TypeError):
+                pass
     return None
 
 def email_checker(email):
@@ -262,22 +293,6 @@ def zip_code_clean(df):
             trim(col("zip_code")) == "",  # Handles empty and all-space zip_codes
             None
         ).otherwise(None))
-    )
-
-def age_clean(df):
-    return df.withColumn(
-    "age",
-    when(
-        (col("dob").isNotNull()) &
-        (col("age").isNotNull()) &
-        (abs(col("age") - floor(datediff(current_date(), col("dob")) / 365)) < 1),
-        col("age")
-    ).otherwise(
-        when(
-            col("age").isNull() & col("dob").isNotNull(),
-            floor(datediff(current_date(), col("dob")) / 365)
-        ).otherwise(None)
-    )
     )
 
 def credit_score_clean(df):
@@ -477,45 +492,107 @@ def payment_category_clean(payment_cat):
     payment_cat = re.sub(r'[^A-Z]', '', payment_cat)  # Keep only alphabets
     return payment_categories.get(payment_cat, "Unknown")
 
+def clean_card_type(card_type):
+    card_type_mapping = {
+        # American Express variants
+        'AMEX': 'American Express',
+        'Amex': 'American Express',
+        'amex': 'American Express',
+        'AE': 'American Express',
+        'American Express': 'American Express',
 
-card_type_mapping = {
-    # American Express variants
-    'AMEX': 'American Express',
-    'Amex': 'American Express',
-    'amex': 'American Express',
-    'AE': 'American Express',
-    'American Express': 'American Express',
+        # Visa variants
+        'VISA': 'Visa',
+        'Visa': 'Visa',
+        'visa': 'Visa',
+        'V': 'Visa',
 
-    # Visa variants
-    'VISA': 'Visa',
-    'Visa': 'Visa',
-    'visa': 'Visa',
-    'V': 'Visa',
+        # Mastercard variants
+        'MC': 'Mastercard',
+        'Mastercard': 'Mastercard',
+        'MASTERCARD': 'Mastercard',
+        'mastercard': 'Mastercard',
+        'Master Card': 'Mastercard',
+        'MasterCard': 'Mastercard',
+        'MASTER': 'Mastercard',
+        'Master': 'Mastercard',
 
-    # Mastercard variants
-    'MC': 'Mastercard',
-    'Mastercard': 'Mastercard',
-    'MASTERCARD': 'Mastercard',
-    'mastercard': 'Mastercard',
-    'Master Card': 'Mastercard',
-    'MasterCard': 'Mastercard',
-    'MASTER': 'Mastercard',
-    'Master': 'Mastercard',
+        # Discover variants
+        'DISC': 'Discover',
+        'Discover': 'Discover',
+        'DISCOVER': 'Discover',
+        'discover': 'Discover',
+        'DIS': 'Discover',
+        'D': 'Discover',
 
-    # Discover variants
-    'DISC': 'Discover',
-    'Discover': 'Discover',
-    'DISCOVER': 'Discover',
-    'discover': 'Discover',
-    'DIS': 'Discover',
-    'D': 'Discover',
+        # Handle NULL/missing values
+        'NULL': 'Unknown',
+        '': 'Unknown',
+        ' ': 'Unknown',
+        'null': 'Unknown',
+        'N/A': 'Unknown',
+        'NA': 'Unknown',
+        None: 'Unknown'
+    }
+    """Clean and standardize card type values"""
+    if not card_type or str(card_type).strip() == '':
+        return 'Unknown'
+    # Convert to string and strip whitespace
+    card_type_clean = str(card_type).strip()
+    # Use mapping dictionary
+    return card_type_mapping.get(card_type_clean, 'Other')
 
-    # Handle NULL/missing values
-    'NULL': 'Unknown',
-    '': 'Unknown',
-    ' ': 'Unknown',
-    'null': 'Unknown',
-    'N/A': 'Unknown',
-    'NA': 'Unknown',
-    None: 'Unknown'
-}
+def clean_boolean_value(df):
+    return df.withColumn(
+        "is_fraud",
+        when(
+            lower(col("is_fraud")).isin(["y", "yes","true","t"]),
+            True
+        ).otherwise(
+            when(
+                lower(col("is_fraud")).isin(["n", "no","f","false"]),
+                False
+            ).otherwise(None)
+        )
+    )
+
+def text_clean(text):
+    if text is None:
+        return None
+    else:
+        return re.sub(r'[^a-zA-Z0-9]', " ", str(text).strip().lower())
+
+def clean_last_four_digits_value(value):
+    """
+    Cleans a string to return only the last four digits. Removes all non-digit characters.
+    If no digits exist, returns None.
+    """
+    import re
+    if value is None:
+        return None
+    digits = re.sub(r'\D', '', str(value))
+    if not digits:
+        return None
+    return digits[-4:]
+
+
+def remove_all_null_rows(df):
+    if df is None or len(df.columns) == 0:
+        return df
+    # Create a condition that checks if ALL columns are null
+    # coalesce returns the first non-null value, so if it's null, all columns were null
+    all_columns_null = coalesce(*[col(c) for c in df.columns]).isNull()
+    # Filter out rows where all columns are null (keep rows that have at least one non-null value)
+    cleaned_df = df.filter(~all_columns_null)
+    return cleaned_df
+
+
+def get_all_null_rows_count(df):
+    if df is None or len(df.columns) == 0:
+        return 0
+    # Create condition to find rows where all columns are null
+    all_columns_null = coalesce(*[col(c) for c in df.columns]).isNull()
+    # Count rows where all columns are null
+    null_rows_count = df.filter(all_columns_null).count()
+
+    return null_rows_count
