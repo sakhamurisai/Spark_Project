@@ -1,5 +1,9 @@
 import sys
-from pyspark.sql import *
+import yaml
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, udf
+from pyspark.sql.types import StringType
+from pyspark.sql.utils import AnalysisException
 from lib.logger import Log4j
 from lib.utils import *
 from lib.data_validation import *
@@ -11,52 +15,56 @@ if __name__ == "__main__":
     logger = None
 
     try:
-        conf = get_spark_app_config()
-        spark = SparkSession.builder \
-            .config("spark.driver.extraJavaOptions", "-Dlog4j.configuration=file:log4j.properties") \
-            .config(conf=conf) \
-            .getOrCreate()
+        # Load configuration from YAML file
+        with open("config.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        data_file = config.get("data_file")
+        spark_conf = config.get("spark", {})
+
+
+        # Build SparkSession using all configs from YAML
+        builder = SparkSession.builder
+        # Handle special keys for appName and master
+        if "app_name" in spark_conf:
+            builder = builder.appName(spark_conf["app_name"])
+        if "master" in spark_conf:
+            builder = builder.master(spark_conf["master"])
+        # Apply all other configs
+        for k, v in spark_conf.items():
+            if k not in ("app_name", "master"):
+                # Convert underscores to dots for Spark config keys if needed
+                spark_key = k.replace("_", ".") if "." not in k else k
+                builder = builder.config(f"spark.{spark_key}", v)
+        builder = builder.config("spark.driver.extraJavaOptions", "-Dlog4j.configuration=file:log4j.properties")
+        spark = builder.getOrCreate()
         spark.conf.set("spark.sql.legacy.charVarcharAsString", "true")
         logger = Log4j(spark)
         logger.info("Starting Hello Spark!")
 
-        # Your Processing Code
-        if len(sys.argv) != 2:
-            logger.error("Usage: Hello_Spark <filename>")
+        logger.info(f"Using data file: {data_file}")
+
+        # Data loading using the integrated data file
+        try:
+            uncleaned_df = load_data(spark, data_file)
+            logger.info("Data loading completed successfully")
+        except Exception as e:
+            if logger:
+                logger.error(f"Error loading data: {str(e)}")
+            else:
+                print(f"Error loading data: {str(e)}")
             sys.exit(-1)
 
-        # ... rest of your processing code remains the same ...
-
-        logger.info("Comprehensive final data validation completed successfully")
-
     except Exception as e:
-        if logger:
-            logger.error(f"Critical error in ETL pipeline: {str(e)}")
+        if 'logger' in locals() and logger:
+            logger.error(f"Error in initial data validation: {str(e)}")
+            logger.warn("Continuing without initial validation metrics")
         else:
-            print(f"Critical error before logger initialization: {str(e)}")
+            print(f"Error in initial data validation: {str(e)}")
+            print("Continuing without initial validation metrics")
         sys.exit(-1)
 
-    #Your Processing Code
-    if len(sys.argv) != 2:
-        logger.error("Usage: Hello_Spark <filename>")
-        sys.exit(-1)
-
-    # ADDED: Try-catch for data loading
-    try:
-        uncleaned_df = load_data(spark, sys.argv[1])
-        logger.info("Data loading completed successfully")
-    except Exception as e:
-        logger.error(f"Error loading data: {str(e)}")
-        sys.exit(-1)
-
-    # ADDED: Initial data validation - baseline quality assessment
-    try:
-        logger.info("Starting initial data quality validation")
-        basic_validation_checks(uncleaned_df, "original_data")
-        logger.info("Initial data validation completed successfully")
-    except Exception as e:
-        logger.error(f"Error in initial data validation: {str(e)}")
-        logger.warn("Continuing without initial validation metrics")
+    # If we reach here, config and data loaded successfully, continue with ETL
+    # ... rest of your processing code remains the same ...
 
     # ADDED: Try-catch for basic cleaning (drop duplicates and nulls)
     try:
@@ -406,7 +414,7 @@ if __name__ == "__main__":
         is_flagged_df = is_fraud_df
         logger.warn("Continuing with original is_flagged data")
 
-    # ADDED: Mid-pipeline validation checkpoint - critical data quality check
+# ADDED: Mid-pipeline validation checkpoint - critical data quality check
     try:
         logger.info("Performing mid-pipeline validation checkpoint")
 
@@ -462,26 +470,25 @@ if __name__ == "__main__":
         logger.error(f"Error in notes/internal comments cleaning: {str(e)}")
         notes_internal_comments_df = risk_score_df
         logger.warn("Continuing with original notes/internal comments data")
+        logger.info("Data cleaning pipeline completed successfully")
+        logger.info("Final cleaned DataFrame ready for further processing")
 
-    # Ensure we have a current dataframe for validation
-    current_df = notes_internal_comments_df
+    notes_internal_comments_df = notes_internal_comments_df.persist()  
+    # Remove rows where all non-key columns are null (except 'customer_id' and 'transaction_id')
+    try:
+        logger.info("Starting removal of fully null non-key rows")
+        cleaned_df = drop_fully_null_non_key_rows(notes_internal_comments_df)
+        logger.info(f"Null row removal complete. Remaining rows: {cleaned_df.count()}")
+    except AnalysisException as ae:
+        logger.error(f"AnalysisException during ETL processing: {ae}")
+    except Exception as e:
+        logger.error(f"Unexpected error in ETL pipeline: {e}", exc_info=True)
 
-#removing the temp_date column
-
-# ADDED: Intermediate data validation - after major cleaning operations
-try:
-    logger.info("Starting intermediate data quality validation")
-    basic_validation_checks(current_df, "intermediate_cleaned_data")
-    validate_business_rules(current_df)
-    logger.info("Intermediate data validation completed successfully")
-except Exception as e:
-    logger.error(f"Error in intermediate data validation: {str(e)}")
-    logger.warn("Continuing without intermediate validation metrics")
 
 # assigning the data types for the column
     # ADDED: Try-catch for final type casting
     try:
-        final_df = notes_internal_comments_df.withColumn("customer_id",col("customer_id").cast("varchar(15)")) \
+        final_df = cleaned_df.withColumn("customer_id",col("customer_id").cast("varchar(15)")) \
             .withColumn("first_name", col("first_name").cast("varchar(50)")) \
             .withColumn("last_name", col("last_name").cast("varchar(50)")) \
             .withColumn("full_name", col("full_name").cast("varchar(100)")) \
@@ -518,93 +525,9 @@ except Exception as e:
         logger.info("Final data type casting completed successfully")
     except Exception as e:
         logger.error(f"Error in final type casting: {str(e)}")
-        final_df = notes_internal_comments_df
+        final_df = cleaned_df  # Fallback to uncasted DataFrame
         logger.warn("Continuing with data without type casting")
 
-#removing the rows that are null in all columns
-    # removing the rows that are null in all columns
-    # ADDED: Try-catch for removing completely null rows
-    try:
-        if 'final_df' in locals():
-            # Get initial metrics
-            initial_row_count = final_df.count()
-            all_null_rows_count = get_all_null_rows_count(final_df)
-
-            logger.info(f"Initial dataset: {initial_row_count:,} rows")
-            logger.info(f"Rows with all null values: {all_null_rows_count:,}")
-
-            if all_null_rows_count > 0:
-                # Remove completely null rows
-                final_df = remove_all_null_rows(final_df)
-
-                # Get final metrics
-                final_row_count = final_df.count()
-                removed_rows = initial_row_count - final_row_count
-
-                logger.info(f"Successfully removed {removed_rows:,} completely null rows")
-                logger.info(f"Final dataset: {final_row_count:,} rows")
-
-                # Calculate percentage impact
-                removal_percentage = (removed_rows / initial_row_count) * 100
-                logger.info(f"Data reduction: {removal_percentage:.2f}%")
-            else:
-                logger.info("No completely null rows found - dataset is clean")
-
-        else:
-            logger.warn("final_df variable not available for null row removal")
-
-    except Exception as e:
-        logger.error(f"Error removing completely null rows: {str(e)}")
-        logger.warn("Continuing with original dataset - null row removal failed")
-
-    # ADDED: Comprehensive final data validation and quality assessment
-    try:
-        logger.info("Starting comprehensive final data validation")
-
-        # Basic validation checks for final dataset
-        total_final_rows = basic_validation_checks(final_df, "final_cleaned_data")
-        logger.info(f"Final dataset contains {total_final_rows:,} records")
-
-        # Business rules validation
-        logger.info("Validating business rules compliance")
-        business_validation_results = validate_business_rules(final_df)
-        logger.info("Business rules validation completed")
-
-        # Data quality metrics calculation
-        logger.info("Calculating comprehensive data quality metrics")
-        quality_metrics = calculate_data_quality_metrics(final_df)
-        logger.info("Data quality metrics calculation completed")
-
-        # Before/after comparison if original data is available
-        logger.info("Performing before/after comparison")
-        compare_before_after(uncleaned_df, final_df)
-        logger.info("Before/after comparison completed")
-
-        # Statistical validation
-        logger.info("Performing statistical validation")
-        statistical_validation(uncleaned_df, final_df)
-        logger.info("Statistical validation completed")
-
-        # Sample validation for manual review
-        logger.info("Generating samples for manual review")
-        sample_validation(final_df, sample_size=100)
-        logger.info("Sample validation completed")
-
-        # Log summary of validation results
-        logger.info("=== DATA VALIDATION SUMMARY ===")
-        logger.info(f"Total records processed: {total_final_rows:,}")
-        if business_validation_results:
-            for rule, count in business_validation_results.items():
-                if count > 0:
-                    logger.warn(f"Business rule violation - {rule}: {count:,} records")
-                else:
-                    logger.info(f"Business rule passed - {rule}: No violations found")
-
-        logger.info("Comprehensive final data validation completed successfully")
-
-    except Exception as e:
-        logger.error(f"Error in final data validation: {str(e)}")
-        logger.warn("Continuing without comprehensive validation - pipeline completed but validation failed")
     finally:
     # Safe cleanup
         if logger:
@@ -615,3 +538,56 @@ except Exception as e:
             except Exception as e:
                 print(f"Error stopping Spark session: {e}")
 
+
+"""
+
+# ADDED: Comprehensive final data validation and quality assessment
+try:
+    logger.info("Starting comprehensive final data validation")
+
+    # Basic validation checks for final dataset
+    total_final_rows = basic_validation_checks(final1_df, "final_cleaned_data")
+    logger.info(f"Final dataset contains {total_final_rows:,} records")
+
+    # Business rules validation
+    logger.info("Validating business rules compliance")
+    business_validation_results = validate_business_rules(final1_df)
+    logger.info("Business rules validation completed")
+
+    # Data quality metrics calculation
+    logger.info("Calculating comprehensive data quality metrics")
+    quality_metrics = calculate_data_quality_metrics(final1_df)
+    logger.info("Data quality metrics calculation completed")
+
+    # Before/after comparison if original data is available
+    logger.info("Performing before/after comparison")
+    compare_before_after(uncleaned_df, final1_df)
+    logger.info("Before/after comparison completed")
+
+    # Statistical validation
+    logger.info("Performing statistical validation")
+    statistical_validation(uncleaned_df, final1_df)
+    logger.info("Statistical validation completed")
+
+    # Sample validation for manual review
+    logger.info("Generating samples for manual review")
+    sample_validation(final1_df, sample_size=100)
+    logger.info("Sample validation completed")
+
+    # Log summary of validation results
+    logger.info("=== DATA VALIDATION SUMMARY ===")
+    logger.info(f"Total records processed: {total_final_rows:,}")
+    if business_validation_results:
+        for rule, count in business_validation_results.items():
+            if count > 0:
+                logger.warn(f"Business rule violation - {rule}: {count:,} records")
+            else:
+                logger.info(f"Business rule passed - {rule}: No violations found")
+
+    logger.info("Comprehensive final data validation completed successfully")
+
+except Exception as e:
+    logger.error(f"Error in final data validation: {str(e)}")
+    logger.warn("Continuing without comprehensive validation - pipeline completed but validation failed")
+
+"""    

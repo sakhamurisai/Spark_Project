@@ -1,0 +1,9 @@
+data_file: data\data_creatorsynthetic_bank_customers_transactions.csv
+log_level: INFO
+spark:
+  executor.memory: 10g
+  driver.memory: 10g
+  python.worker.memory: 8g
+  local_dir: D:/Projects/spark/spark_beginner_course/Spark_Anaconda_basic/temp_files
+  sql.execution.pyspark.udf.faulthandler.enabled: "true"
+  python.worker.faulthandler.enabled: "true"

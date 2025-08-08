@@ -576,23 +576,9 @@ def clean_last_four_digits_value(value):
     return digits[-4:]
 
 
-def remove_all_null_rows(df):
-    if df is None or len(df.columns) == 0:
-        return df
-    # Create a condition that checks if ALL columns are null
-    # coalesce returns the first non-null value, so if it's null, all columns were null
-    all_columns_null = coalesce(*[col(c) for c in df.columns]).isNull()
-    # Filter out rows where all columns are null (keep rows that have at least one non-null value)
-    cleaned_df = df.filter(~all_columns_null)
+def drop_fully_null_non_key_rows(df):
+
+    key_columns = ["transaction_id", "customer_id"]  # FIXED: Correctly defined key columns
+    non_key_columns = [col for col in df.columns if col not in key_columns] 
+    cleaned_df = df.na.drop(how="all", subset=non_key_columns)
     return cleaned_df
-
-
-def get_all_null_rows_count(df):
-    if df is None or len(df.columns) == 0:
-        return 0
-    # Create condition to find rows where all columns are null
-    all_columns_null = coalesce(*[col(c) for c in df.columns]).isNull()
-    # Count rows where all columns are null
-    null_rows_count = df.filter(all_columns_null).count()
-
-    return null_rows_count
