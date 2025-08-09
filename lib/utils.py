@@ -656,8 +656,10 @@ def insert_matching_columns(df, table_name, conn,schema,pg_host,pg_port,pg_datab
     # Step 4: Build JDBC URL
     jdbc_url = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_database}"
 
+    final_df = df_to_insert.repartition(10)
+
     # Step 5: Insert into PostgreSQL
-    df_to_insert.write.format("jdbc") \
+    final_df.write.format("jdbc") \
             .option("url", jdbc_url) \
             .option("dbtable", f"{schema}.{table_name}") \
             .option("user", pg_user) \
