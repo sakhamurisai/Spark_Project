@@ -1,7 +1,6 @@
 import configparser
 from datetime import *
 import re
-from pyspark.sql.functions import col, udf
 from pyspark.sql.types import StringType
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
@@ -580,7 +579,7 @@ def clean_last_four_digits_value(value):
 
 def drop_fully_null_non_key_rows(df, num_partitions=200):
     key_columns = ["transaction_id", "customer_id","legacy_id"]
-    non_key_columns = [col for col in df.columns if col not in key_columns]
+    non_key_columns = [col_name for col_name in df.columns if col_name not in key_columns]
 
     # Repartition the DataFrame for better parallelism and performance
     df = df.repartition(num_partitions)
@@ -589,3 +588,82 @@ def drop_fully_null_non_key_rows(df, num_partitions=200):
     cleaned_df = df.filter(coalesce(*[col(c) for c in non_key_columns]).isNotNull())
 
     return cleaned_df
+
+def table_exists(conn, schema, table_name):
+    query = """
+    SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = %s 
+          AND table_name = %s
+    );
+    """
+    with conn.cursor() as cur:
+        cur.execute(query, (schema, table_name))
+        return cur.fetchone()[0]
+
+def data_exists(conn, schema, table_name, df):
+    #getting the columns
+    key_columns = df.columns
+    """
+    Check if any row in the DB table matches rows in the DataFrame based on key_columns.
+    This is a simplified example using EXISTS and key columns only.
+    """
+    placeholders = " AND ".join([f"{col} = %s" for col in key_columns])
+    query = f"""
+    SELECT EXISTS (
+        SELECT 1 FROM {schema}.{table_name} 
+        WHERE {placeholders}
+        LIMIT 1
+    );
+    """
+
+    with conn.cursor() as cur:
+        for row in df.select(key_columns).take(10):  # check first 10 rows for example
+            values = tuple(row[c] for c in key_columns)
+            cur.execute(query, values)
+            if cur.fetchone()[0]:
+                return True
+    return False
+
+def create_table(conn, sql_create):
+    with conn.cursor() as cur:
+        cur.execute(sql_create)
+    conn.commit()
+
+import psycopg2
+import yaml
+
+def insert_matching_columns(df, table_name, conn,schema,pg_host,pg_port,pg_database,pg_user,pg_password):
+
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT column_name 
+        FROM information_schema.columns
+        WHERE table_schema = %s
+          AND table_name = %s
+        ORDER BY ordinal_position;
+    """, (schema, table_name))
+    table_columns = [row[0] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+
+    # Step 2: Remove unique ID column from the list
+    insert_columns = [col for col in table_columns if col in df.columns]
+
+    # Step 3: Select only matching columns from DataFrame
+    df_to_insert = df.select(insert_columns)
+
+    # Step 4: Build JDBC URL
+    jdbc_url = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_database}"
+
+    # Step 5: Insert into PostgreSQL
+    df_to_insert.write.format("jdbc") \
+            .option("url", jdbc_url) \
+            .option("dbtable", f"{schema}.{table_name}") \
+            .option("user", pg_user) \
+            .option("password", pg_password) \
+            .option("driver", "org.postgresql.Driver") \
+            .mode("append") \
+            .save()
+
+    print(f"Inserted {df_to_insert.count()} rows into {schema}.{table_name} ).")

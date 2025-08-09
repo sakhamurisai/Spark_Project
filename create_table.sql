@@ -1,5 +1,6 @@
 CREATE TABLE customer_transactions (
-    customer_id         VARCHAR,
+    transaction_key SERIAL PRIMARY KEY,
+    customer_id         VARCHAR NOT NULL,
     first_name          VARCHAR,
     last_name           VARCHAR,
     full_name           VARCHAR,
@@ -18,7 +19,7 @@ CREATE TABLE customer_transactions (
     account_open_date   DATE,
     account_type        VARCHAR,
     account_balance     DOUBLE PRECISION,
-    transaction_id      VARCHAR,
+    transaction_id      VARCHAR NOT NULL,
     transaction_date    DATE,
     transaction_amount  DOUBLE PRECISION,
     transaction_type    VARCHAR,

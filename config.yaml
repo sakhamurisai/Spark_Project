@@ -7,3 +7,11 @@ spark:
   local_dir: D:/Projects/spark/spark_beginner_course/Spark_Anaconda_basic/temp_files
   sql.execution.pyspark.udf.faulthandler.enabled: "true"
   python.worker.faulthandler.enabled: "true"
+
+postgresql:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: Apostgres$01
+  database: spark_db
+  schema: public

@@ -1,5 +1,6 @@
 import sys
 import yaml
+import psycopg2
 from pyspark.sql import SparkSession
 from pyspark.sql.utils import AnalysisException
 from lib.logger import Log4j
@@ -18,7 +19,7 @@ if __name__ == "__main__":
             config = yaml.safe_load(f)
         data_file = config.get("data_file")
         spark_conf = config.get("spark", {})
-
+        pg = config['postgresql']
 
         # Build SparkSession using all configs from YAML
         builder = SparkSession.builder
@@ -526,9 +527,55 @@ if __name__ == "__main__":
         logger.error(f"Error in final type casting: {str(e)}")
         final_df = cleaned_df  # Fallback to uncasted DataFrame
         logger.warn("Continuing with data without type casting")
+    logger.info("Final DataFrame ready for database insertion")
 
-    finally:
+    # saving the data into the postgresql database
+    #connecting to the postgresql database
+    try:
+        conn = psycopg2.connect(
+            host=pg['host'],
+            port=pg['port'],
+            dbname=pg['database'],
+            user=pg['user'],
+            password=pg['password']
+            )
+        cur = conn.cursor()
+        schema = pg.get('schema', 'public')  # Default to 'public' schema if not specified
+        table_name = pg.get('table_name', 'customer_transactions')
+
+        logger.info(f"Connected to PostgreSQL database {pg['database']} at {pg['host']}:{pg['port']} as user {pg['user']}")
+        if not table_exists(conn, schema, table_name):
+            logger.info(f"Table {schema}.{table_name} does not exist, creating...")
+            with open("create_table.sql", "r") as f:
+                sql_create = f.read()
+            create_table(conn, sql_create)
+        else:
+            logger.info(f"Table {schema}.{table_name} exists.")
+
+        # Check if data exists (based on key columns)
+        if data_exists(conn, schema, table_name, final_df):
+            logger.error("Matching data already exists in the table. Skipping insert.")
+        else:
+            logger.info("Inserting new data into the table...")
+            insert_matching_columns(
+                df= final_df,
+                table_name=table_name,
+                conn=conn,
+                schema=schema,
+                pg_password=pg['password'],
+                pg_user=pg['user'],
+                pg_host=pg['host'],
+                pg_port=pg['port'],
+                pg_database=pg['database'])
+            logger.info("Data inserted successfully.")
+
+    except Exception as e:
+        logger.error(f"Error: {e}")
+
     # Safe cleanup
+    finally:
+        conn.close()
+        cur.close()
         if logger:
             logger.info("Finished Processing!")
         if spark:
