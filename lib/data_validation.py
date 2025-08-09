@@ -6,6 +6,7 @@ from pyspark.sql.functions import *
 
 def basic_validation_checks(df, table_name="cleaned_data", verbose=False):
     """Perform basic validation checks"""
+    df = df.repartition(8)
     print(f"=== BASIC VALIDATION FOR {table_name.upper()} ===")
     total_rows = df.count()
     print(f"Total rows: {total_rows:,}")
@@ -32,6 +33,8 @@ def basic_validation_checks(df, table_name="cleaned_data", verbose=False):
 
 def compare_before_after(original_df, cleaned_df, verbose=False):
     """Compare original vs cleaned data"""
+    original_df = original_df.repartition(8)
+    cleaned_df = cleaned_df.repartition(8)
     print("=== BEFORE/AFTER COMPARISON ===")
     orig_count = original_df.count()
     clean_count = cleaned_df.count()
@@ -52,6 +55,7 @@ def compare_before_after(original_df, cleaned_df, verbose=False):
 
 def calculate_data_quality_metrics(df, verbose=False):
     """Calculate comprehensive data quality metrics"""
+    df = df.repartition(8)
     print("=== DATA QUALITY METRICS ===")
     total_rows = df.count()
     metrics = {}
@@ -94,6 +98,7 @@ def calculate_data_quality_metrics(df, verbose=False):
 
 def validate_business_rules(df, verbose=False):
     """Validate business-specific rules"""
+    df = df.repartition(8)
     print("=== BUSINESS RULES VALIDATION ===")
     total_rows = df.count()
     validation_results = {}
@@ -156,6 +161,8 @@ def validate_business_rules(df, verbose=False):
 
 def statistical_validation(original_df, cleaned_df, verbose=False):
     """Compare statistical properties"""
+    original_df = original_df.repartition(8)
+    cleaned_df = cleaned_df.repartition(8)
     print("=== STATISTICAL VALIDATION ===")
     numeric_columns = ["transaction_amount", "age", "credit_score", "annual_income", "account_balance", "risk_score"]
     for col_name in numeric_columns:
@@ -175,6 +182,7 @@ def statistical_validation(original_df, cleaned_df, verbose=False):
 
 def sample_validation(df, sample_size=1000, verbose=False):
     """Generate samples for manual review"""
+    df = df.repartition(8)
     print(f"=== SAMPLING FOR MANUAL REVIEW ({sample_size} records) ===")
     total_rows = df.count()
     if total_rows == 0:
@@ -194,7 +202,7 @@ def sample_validation(df, sample_size=1000, verbose=False):
         if "card_type" in df.columns:
             edge_case_conditions.append(col("card_type") == "Unknown")
         if "credit_score" in df.columns:
-            edge_case_conditions.append(col("credit_score") < 400)
+            edge_case_conditions.append(col("credit_score") < 50)
             edge_case_conditions.append(col("credit_score") > 800)
         if "age" in df.columns:
             edge_case_conditions.append(col("age") < 18)

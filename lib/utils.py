@@ -1,6 +1,8 @@
 import configparser
 from datetime import *
 import re
+from pyspark.sql.functions import col, udf
+from pyspark.sql.types import StringType
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 from pyspark import SparkConf
@@ -576,9 +578,14 @@ def clean_last_four_digits_value(value):
     return digits[-4:]
 
 
-def drop_fully_null_non_key_rows(df):
+def drop_fully_null_non_key_rows(df, num_partitions=200):
+    key_columns = ["transaction_id", "customer_id","legacy_id"]
+    non_key_columns = [col for col in df.columns if col not in key_columns]
 
-    key_columns = ["transaction_id", "customer_id"]  # FIXED: Correctly defined key columns
-    non_key_columns = [col for col in df.columns if col not in key_columns] 
-    cleaned_df = df.na.drop(how="all", subset=non_key_columns)
+    # Repartition the DataFrame for better parallelism and performance
+    df = df.repartition(num_partitions)
+
+    # Filter rows where at least one non-key column is not null
+    cleaned_df = df.filter(coalesce(*[col(c) for c in non_key_columns]).isNotNull())
+
     return cleaned_df
