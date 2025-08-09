@@ -20,6 +20,7 @@ if __name__ == "__main__":
         data_file = config.get("data_file")
         spark_conf = config.get("spark", {})
         pg = config['postgresql']
+        jar_path = config['postgresql']['jdbc_driver_path']
 
         # Build SparkSession using all configs from YAML
         builder = SparkSession.builder
@@ -35,7 +36,7 @@ if __name__ == "__main__":
                 spark_key = k.replace("_", ".") if "." not in k else k
                 builder = builder.config(f"spark.{spark_key}", v)
         builder = builder.config("spark.driver.extraJavaOptions", "-Dlog4j.configuration=file:log4j.properties")
-        spark = builder.getOrCreate()
+        spark = builder.config("spark.jars", jar_path).getOrCreate()
         spark.conf.set("spark.sql.legacy.charVarcharAsString", "true")
         logger = Log4j(spark)
         logger.info("Starting Hello Spark!")
