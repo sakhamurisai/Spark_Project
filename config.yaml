@@ -1,4 +1,15 @@
-data_file: data\data_creatorsynthetic_bank_customers_transactions.csv
+data_file: 
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction0.csv0.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction1.csv1.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction2.csv2.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction3.csv3.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction4.csv4.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction5.csv5.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction6.csv6.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction7.csv7.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction8.csv8.csv
+ - D:\Projects\spark\spark_beginner_course\Spark_Anaconda_basic\data\transaction9.csv9.csv
+
 log_level: INFO
 spark:
   executor.memory: 10g
@@ -7,6 +18,7 @@ spark:
   local_dir: D:/Projects/spark/spark_beginner_course/Spark_Anaconda_basic/temp_files
   sql.execution.pyspark.udf.faulthandler.enabled: "true"
   python.worker.faulthandler.enabled: "true"
+  spark.sql.shuffle.partitions : 100
 
 postgresql:
   host: localhost
